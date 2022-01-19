@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/WinnerSoftLab/goose/v3"
 	"github.com/matryer/is"
-	"github.com/pressly/goose/v3"
 )
 
 func TestNotAllowMissing(t *testing.T) {

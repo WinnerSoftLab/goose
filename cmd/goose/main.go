@@ -7,7 +7,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/pressly/goose/v3"
+	"github.com/WinnerSoftLab/goose/v3"
 )
 
 var (
