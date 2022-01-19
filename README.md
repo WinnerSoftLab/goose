@@ -30,6 +30,7 @@ Goose supports [embedding SQL migrations](#embedded-sql-migrations), which means
     - goose pkg doesn't have any vendor dependencies anymore
 - We use timestamped migrations by default but recommend a hybrid approach of using timestamps in the development process and sequential versions in production.
 - Supports missing (out-of-order) migrations with the `-allow-missing` flag, or if using as a library supply the functional option `goose.WithAllowMissing()` to Up, UpTo or UpByOne.
+- Supports applying ad-hoc migrations without tracking them in the schema table. Useful for seeding a database after migrations have been applied. Use `-no-versioning` flag or the functional option `goose.WithNoVersioning()`.
 
 # Install
 
@@ -41,6 +42,9 @@ For a lite version of the binary without DB connection dependent commands, use t
 
     $ go build -tags='no_postgres no_mysql no_sqlite3' -i -o goose ./cmd/goose
 
+For macOS users `goose` is available as a [Homebrew Formulae](https://formulae.brew.sh/formula/goose#default):
+
+    $ brew install goose 
 
 # Usage
 
@@ -63,26 +67,33 @@ Examples:
     goose sqlite3 ./foo.db create fetch_user_data go
     goose sqlite3 ./foo.db up
 
-    goose postgres "user=postgres dbname=postgres sslmode=disable" status
+    goose postgres "user=postgres password=postgres dbname=postgres sslmode=disable" status
     goose mysql "user:password@/dbname?parseTime=true" status
     goose redshift "postgres://user:password@qwerty.us-east-1.redshift.amazonaws.com:5439/db" status
     goose tidb "user:password@/dbname?parseTime=true" status
     goose mssql "sqlserver://user:password@dbname:1433?database=master" status
 
 Options:
+
   -allow-missing
-        applies missing (out-of-order) migrations
+    	applies missing (out-of-order) migrations
   -certfile string
-        file path to root CA's certificates in pem format (only support on mysql)
+    	file path to root CA's certificates in pem format (only support on mysql)
   -dir string
-        directory with migration files (default ".")
-  -h    print help
-  -s    use sequential numbering for new migrations
+    	directory with migration files (default ".")
+  -h	print help
+  -no-versioning
+    	apply migration commands with no versioning, in file order, from directory pointed to
+  -s	use sequential numbering for new migrations
+  -ssl-cert string
+    	file path to SSL certificates in pem format (only support on mysql)
+  -ssl-key string
+    	file path to SSL key in pem format (only support on mysql)
   -table string
-        migrations table name (default "goose_db_version")
-  -v    enable verbose mode
+    	migrations table name (default "goose_db_version")
+  -v	enable verbose mode
   -version
-        print version
+    	print version
 
 Commands:
     up                   Migrate the DB to the most recent version available
@@ -239,7 +250,7 @@ language plpgsql;
 Go 1.16 introduced new feature: [compile-time embedding](https://pkg.go.dev/embed/) files into binary and
 corresponding [filesystem abstraction](https://pkg.go.dev/io/fs/).
 
-This feature can be used only for applying existing migrations. Modifying operations such as 
+This feature can be used only for applying existing migrations. Modifying operations such as
 `fix` and `create` will continue to operate on OS filesystem even if using embedded files. This is expected
 behaviour because `io/fs` interfaces allows read-only access.
 
@@ -250,7 +261,7 @@ package main
 import (
     "database/sql"
     "embed"
-    
+
     "github.com/pressly/goose/v3"
 )
 
@@ -258,8 +269,8 @@ import (
 var embedMigrations embed.FS
 
 func main() {
-    var db *sql.DB 
-    // setup database 
+    var db *sql.DB
+    // setup database
 
     goose.SetBaseFS(embedMigrations)
 
@@ -310,6 +321,14 @@ func Down(tx *sql.Tx) error {
 	}
 	return nil
 }
+```
+
+# Development
+
+This can be used to build local `goose` binaries without having the latest Go version installed locally.
+
+```bash
+DOCKER_BUILDKIT=1  docker build -f Dockerfile.local --output bin .
 ```
 
 # Hybrid Versioning
