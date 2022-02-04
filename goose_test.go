@@ -218,7 +218,7 @@ func TestEmbeddedMigrations(t *testing.T) {
 
 		t.Cleanup(func() { os.RemoveAll(tmpDir) })
 
-		if err := Create(db, tmpDir, "test", "sql"); err != nil {
+		if err := Create(db, tmpDir, "test", "sql", nil); err != nil {
 			t.Errorf("Failed to create migration: %s", err)
 		}
 
@@ -236,4 +236,82 @@ func TestEmbeddedMigrations(t *testing.T) {
 			t.Errorf("Failed to locate fixed migration: %s", err)
 		}
 	})
+}
+
+func TestMakeParams(t *testing.T) {
+	cases := []struct {
+		name        string
+		args        []string
+		expected    map[string]string
+		expectedErr error
+	}{
+		{
+			"1 arg",
+			[]string{"1"},
+			nil,
+			nil,
+		},
+		{
+			"2 args",
+			[]string{"1", "2"},
+			nil,
+			nil,
+		},
+		{
+			"3 args",
+			[]string{"1", "2", "foo=bar"},
+			map[string]string{"foo": "bar"},
+			nil,
+		},
+		{
+			"4 args",
+			[]string{"1", "2", "foo=bar", "x=y"},
+			map[string]string{"foo": "bar", "x": "y"},
+			nil,
+		},
+		{
+			"invalid pair",
+			[]string{"1", "2", "foo:bar", "x=y"},
+			nil,
+			ErrInvalidArgument,
+		},
+		{
+			"multiple eq",
+			[]string{"1", "2", "foo=bar=baz"},
+			map[string]string{"foo": "bar=baz"},
+			nil,
+		},
+		{
+			"empty value",
+			[]string{"1", "2", "foo="},
+			map[string]string{"foo": ""},
+			nil,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			actual, err := makeParams(test.args)
+			if err != test.expectedErr {
+				t.Errorf("mismatched error: got %s, expected %s", err, test.expectedErr)
+			}
+			if !areEquals(actual, test.expected) {
+				t.Errorf("mismatched map: got %v, expected %v", actual, test.expected)
+			}
+		})
+	}
+}
+
+func areEquals(actual map[string]string, expected map[string]string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+
+	for key, expectedValue := range expected {
+		if actualValue, ok := actual[key]; !ok || expectedValue != actualValue {
+			return false
+		}
+	}
+
+	return true
 }

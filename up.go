@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"text/template"
 )
 
 type options struct {
 	allowMissing bool
 	applyUpByOne bool
 	noVersioning bool
+	template     *template.Template
 }
 
 type OptionsFunc func(o *options)
@@ -22,6 +24,10 @@ func WithAllowMissing() OptionsFunc {
 
 func WithNoVersioning() OptionsFunc {
 	return func(o *options) { o.noVersioning = true }
+}
+
+func WithTemplate(t *template.Template) OptionsFunc {
+	return func(o *options) { o.template = t }
 }
 
 func withApplyUpByOne() OptionsFunc {

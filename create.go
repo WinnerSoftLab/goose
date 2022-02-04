@@ -14,6 +14,7 @@ import (
 type tmplVars struct {
 	Version   string
 	CamelName string
+	Values    map[string]string
 }
 
 var (
@@ -26,7 +27,7 @@ func SetSequential(s bool) {
 }
 
 // Create writes a new blank migration file.
-func CreateWithTemplate(db *sql.DB, dir string, tmpl *template.Template, name, migrationType string) error {
+func CreateWithTemplate(db *sql.DB, dir string, tmpl *template.Template, name, migrationType string, values map[string]string) error {
 	var version string
 	if sequential {
 		// always use DirFS here because it's modifying operation
@@ -73,6 +74,7 @@ func CreateWithTemplate(db *sql.DB, dir string, tmpl *template.Template, name, m
 	vars := tmplVars{
 		Version:   version,
 		CamelName: camelCase(name),
+		Values:    values,
 	}
 	if err := tmpl.Execute(f, vars); err != nil {
 		return errors.Wrap(err, "failed to execute tmpl")
@@ -83,8 +85,12 @@ func CreateWithTemplate(db *sql.DB, dir string, tmpl *template.Template, name, m
 }
 
 // Create writes a new blank migration file.
-func Create(db *sql.DB, dir, name, migrationType string) error {
-	return CreateWithTemplate(db, dir, nil, name, migrationType)
+func Create(db *sql.DB, dir, name, migrationType string, values map[string]string, opts ...OptionsFunc) error {
+	option := &options{}
+	for _, f := range opts {
+		f(option)
+	}
+	return CreateWithTemplate(db, dir, option.template, name, migrationType, values)
 }
 
 var sqlMigrationTemplate = template.Must(template.New("goose.sql-migration").Parse(`-- +goose Up
