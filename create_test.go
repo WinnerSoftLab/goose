@@ -5,8 +5,10 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 )
 
@@ -51,5 +53,51 @@ func TestSequential(t *testing.T) {
 		if !strings.HasPrefix(f.Name(), expected) {
 			t.Errorf("failed to find %s prefix in %s", expected, f.Name())
 		}
+	}
+}
+func TestCustomTemplate(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	defer os.RemoveAll(dir) // clean up
+
+	tmpl := template.Must(template.New("goose.go-migration").Parse(`
+{{index .Values "comment"}}
+Name {{.CamelName}}
+Version {{.Version}}
+`))
+
+	SetSequential(true)
+	if err := Create(nil, dir, "foo", "go", map[string]string{"comment": "// hello world"}, WithTemplate(tmpl)); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(files) != 1 {
+		b := strings.Builder{}
+		for _, file := range files {
+			b.WriteString(file.Name())
+			b.WriteString("\n")
+		}
+		t.Fatalf("should be only one file, got %d: %s", len(files), b.String())
+	}
+
+	content, err := ioutil.ReadFile(path.Join(dir, files[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := `
+// hello world
+Name Foo
+Version 00001
+`
+
+	if expected != string(content) {
+		t.Errorf("mismatched text: got %v, wanted %v\n", string(content), expected)
 	}
 }

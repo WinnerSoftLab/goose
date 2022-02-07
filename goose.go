@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strconv"
+	"strings"
 )
 
 // Deprecated: VERSION will no longer be supported in v4.
@@ -17,7 +18,8 @@ var (
 	verbose         = false
 
 	// base fs to lookup migrations
-	baseFS fs.FS = osFS{}
+	baseFS             fs.FS = osFS{}
+	ErrInvalidArgument       = fmt.Errorf("invalid argument, expected pairs separeded by equal sign 'key=value'")
 )
 
 // SetVerbose set the goose verbosity mode
@@ -74,10 +76,14 @@ func run(command string, db *sql.DB, dir string, args []string, options ...Optio
 		}
 
 		migrationType := "go"
-		if len(args) == 2 {
+		if len(args) >= 2 {
 			migrationType = args[1]
 		}
-		if err := Create(db, dir, args[0], migrationType); err != nil {
+		params, err := makeParams(args)
+		if err != nil {
+			return err
+		}
+		if err = Create(db, dir, args[0], migrationType, params, options...); err != nil {
 			return err
 		}
 	case "down":
@@ -120,4 +126,25 @@ func run(command string, db *sql.DB, dir string, args []string, options ...Optio
 		return fmt.Errorf("%q: no such command", command)
 	}
 	return nil
+}
+
+func makeParams(args []string) (map[string]string, error) {
+	// forces specifying migration type to use key value pairs.
+	// TBD: allow optional migration type
+	if len(args) < 3 {
+		return nil, nil
+	}
+
+	pairs := args[2:]
+
+	result := make(map[string]string, len(pairs))
+	for _, pair := range pairs {
+		values := strings.SplitN(pair, "=", 2)
+		if len(values) != 2 {
+			return nil, ErrInvalidArgument
+		}
+		result[values[0]] = values[1]
+	}
+
+	return result, nil
 }
