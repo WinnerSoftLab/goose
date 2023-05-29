@@ -1,6 +1,7 @@
 package goose
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/pkg/errors"
@@ -8,6 +9,10 @@ import (
 
 // Version prints the current version of the database.
 func Version(db *sql.DB, dir string, opts ...OptionsFunc) error {
+	return VersionCtx(context.Background(), db, dir, opts...)
+}
+
+func VersionCtx(ctx context.Context, db *sql.DB, dir string, opts ...OptionsFunc) error {
 	option := &options{}
 	for _, f := range opts {
 		f(option)
@@ -25,7 +30,7 @@ func Version(db *sql.DB, dir string, opts ...OptionsFunc) error {
 		return nil
 	}
 
-	current, err := GetDBVersion(db)
+	current, err := GetDBVersionCtx(ctx, db)
 	if err != nil {
 		return err
 	}

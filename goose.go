@@ -1,6 +1,7 @@
 package goose
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io/fs"
@@ -40,22 +41,32 @@ func SetBaseFS(fsys fs.FS) {
 
 // Run runs a goose command.
 func Run(command string, db *sql.DB, dir string, args ...string) error {
-	return run(command, db, dir, args)
+	return RunCtx(context.Background(), command, db, dir, args...)
 }
 
-// Run runs a goose command with options.
+// RunWithOptions runs a goose command with options.
 func RunWithOptions(command string, db *sql.DB, dir string, args []string, options ...OptionsFunc) error {
-	return run(command, db, dir, args, options...)
+	return RunWithOptionsCtx(context.Background(), command, db, dir, args, options...)
 }
 
-func run(command string, db *sql.DB, dir string, args []string, options ...OptionsFunc) error {
+// RunCtx runs a goose command.
+func RunCtx(ctx context.Context, command string, db *sql.DB, dir string, args ...string) error {
+	return run(ctx, command, db, dir, args)
+}
+
+// RunWithOptionsCtx runs a goose command with options.
+func RunWithOptionsCtx(ctx context.Context, command string, db *sql.DB, dir string, args []string, options ...OptionsFunc) error {
+	return run(ctx, command, db, dir, args, options...)
+}
+
+func run(ctx context.Context, command string, db *sql.DB, dir string, args []string, options ...OptionsFunc) error {
 	switch command {
 	case "up":
-		if err := Up(db, dir, options...); err != nil {
+		if err := UpCtx(ctx, db, dir, options...); err != nil {
 			return err
 		}
 	case "up-by-one":
-		if err := UpByOne(db, dir, options...); err != nil {
+		if err := UpByOneCtx(ctx, db, dir, options...); err != nil {
 			return err
 		}
 	case "up-to":
@@ -67,7 +78,7 @@ func run(command string, db *sql.DB, dir string, args []string, options ...Optio
 		if err != nil {
 			return fmt.Errorf("version must be a number (got '%s')", args[0])
 		}
-		if err := UpTo(db, dir, version, options...); err != nil {
+		if err := UpToCtx(ctx, db, dir, version, options...); err != nil {
 			return err
 		}
 	case "create":
@@ -87,7 +98,7 @@ func run(command string, db *sql.DB, dir string, args []string, options ...Optio
 			return err
 		}
 	case "down":
-		if err := Down(db, dir, options...); err != nil {
+		if err := DownCtx(ctx, db, dir, options...); err != nil {
 			return err
 		}
 	case "down-to":
@@ -99,7 +110,7 @@ func run(command string, db *sql.DB, dir string, args []string, options ...Optio
 		if err != nil {
 			return fmt.Errorf("version must be a number (got '%s')", args[0])
 		}
-		if err := DownTo(db, dir, version, options...); err != nil {
+		if err := DownToCtx(ctx, db, dir, version, options...); err != nil {
 			return err
 		}
 	case "fix":
@@ -107,19 +118,19 @@ func run(command string, db *sql.DB, dir string, args []string, options ...Optio
 			return err
 		}
 	case "redo":
-		if err := Redo(db, dir, options...); err != nil {
+		if err := RedoCtx(ctx, db, dir, options...); err != nil {
 			return err
 		}
 	case "reset":
-		if err := Reset(db, dir, options...); err != nil {
+		if err := ResetCtx(ctx, db, dir, options...); err != nil {
 			return err
 		}
 	case "status":
-		if err := Status(db, dir, options...); err != nil {
+		if err := StatusCtx(ctx, db, dir, options...); err != nil {
 			return err
 		}
 	case "version":
-		if err := Version(db, dir, options...); err != nil {
+		if err := VersionCtx(ctx, db, dir, options...); err != nil {
 			return err
 		}
 	default:

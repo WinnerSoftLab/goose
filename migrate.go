@@ -1,6 +1,7 @@
 package goose
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io/fs"
@@ -131,6 +132,24 @@ func AddMigration(up func(*sql.Tx) error, down func(*sql.Tx) error) {
 
 // AddNamedMigration : Add a named migration.
 func AddNamedMigration(filename string, up func(*sql.Tx) error, down func(*sql.Tx) error) {
+	AddNamedMigrationCtx(
+		filename,
+		func(_ context.Context, tx *sql.Tx) error {
+			return up(tx)
+		},
+		func(_ context.Context, tx *sql.Tx) error {
+			return down(tx)
+		})
+}
+
+// AddMigrationCtx adds a migration.
+func AddMigrationCtx(up func(context.Context, *sql.Tx) error, down func(context.Context, *sql.Tx) error) {
+	_, filename, _, _ := runtime.Caller(1)
+	AddNamedMigrationCtx(filename, up, down)
+}
+
+// AddNamedMigrationCtx adds a migration.
+func AddNamedMigrationCtx(filename string, up func(context.Context, *sql.Tx) error, down func(context.Context, *sql.Tx) error) {
 	v, _ := NumericComponent(filename)
 	migration := &Migration{Version: v, Next: -1, Previous: -1, Registered: true, UpFn: up, DownFn: down, Source: filename}
 
@@ -241,9 +260,13 @@ func versionFilter(v, current, target int64) bool {
 // EnsureDBVersion retrieves the current version for this DB.
 // Create and initialize the DB version table if it doesn't exist.
 func EnsureDBVersion(db *sql.DB) (int64, error) {
+	return EnsureDBVersionCtx(context.Background(), db)
+}
+
+func EnsureDBVersionCtx(ctx context.Context, db *sql.DB) (int64, error) {
 	rows, err := GetDialect().dbVersionQuery(db)
 	if err != nil {
-		return 0, createVersionTable(db)
+		return 0, createVersionTable(ctx, db)
 	}
 	defer rows.Close()
 
@@ -289,22 +312,22 @@ func EnsureDBVersion(db *sql.DB) (int64, error) {
 
 // Create the db version table
 // and insert the initial 0 value into it
-func createVersionTable(db *sql.DB) error {
-	txn, err := db.Begin()
+func createVersionTable(ctx context.Context, db *sql.DB) error {
+	txn, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
 	d := GetDialect()
 
-	if _, err := txn.Exec(d.createVersionTableSQL()); err != nil {
+	if _, err := txn.ExecContext(ctx, d.createVersionTableSQL()); err != nil {
 		txn.Rollback()
 		return err
 	}
 
 	version := 0
 	applied := true
-	if _, err := txn.Exec(d.insertVersionSQL(), version, applied); err != nil {
+	if _, err := txn.ExecContext(ctx, d.insertVersionSQL(), version, applied); err != nil {
 		txn.Rollback()
 		return err
 	}
@@ -314,7 +337,11 @@ func createVersionTable(db *sql.DB) error {
 
 // GetDBVersion is an alias for EnsureDBVersion, but returns -1 in error.
 func GetDBVersion(db *sql.DB) (int64, error) {
-	version, err := EnsureDBVersion(db)
+	return GetDBVersionCtx(context.Background(), db)
+}
+
+func GetDBVersionCtx(ctx context.Context, db *sql.DB) (int64, error) {
+	version, err := EnsureDBVersionCtx(ctx, db)
 	if err != nil {
 		return -1, err
 	}

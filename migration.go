@@ -1,6 +1,7 @@
 package goose
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"path/filepath"
@@ -25,8 +26,8 @@ type Migration struct {
 	Previous     int64  // previous version, -1 if none
 	Source       string // path to .sql script or go file
 	Registered   bool
-	UpFn         func(*sql.Tx) error // Up go migration function
-	DownFn       func(*sql.Tx) error // Down go migration function
+	UpFn         func(context.Context, *sql.Tx) error // UpCtx go migration function
+	DownFn       func(context.Context, *sql.Tx) error // DownCtx go migration function
 	noVersioning bool
 }
 
@@ -36,21 +37,31 @@ func (m *Migration) String() string {
 
 // Up runs an up migration.
 func (m *Migration) Up(db *sql.DB) error {
-	if err := m.run(db, true); err != nil {
-		return err
-	}
-	return nil
+	return m.UpCtx(context.Background(), db)
 }
 
 // Down runs a down migration.
 func (m *Migration) Down(db *sql.DB) error {
-	if err := m.run(db, false); err != nil {
+	return m.DownCtx(context.Background(), db)
+}
+
+// UpCtx runs an up migration.
+func (m *Migration) UpCtx(ctx context.Context, db *sql.DB) error {
+	if err := m.run(ctx, db, true); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (m *Migration) run(db *sql.DB, direction bool) error {
+// DownCtx runs a down migration.
+func (m *Migration) DownCtx(ctx context.Context, db *sql.DB) error {
+	if err := m.run(ctx, db, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *Migration) run(ctx context.Context, db *sql.DB, direction bool) error {
 	switch filepath.Ext(m.Source) {
 	case ".sql":
 		f, err := baseFS.Open(m.Source)
@@ -64,7 +75,7 @@ func (m *Migration) run(db *sql.DB, direction bool) error {
 			return errors.Wrapf(err, "ERROR %v: failed to parse SQL migration file", filepath.Base(m.Source))
 		}
 
-		if err := runSQLMigration(db, statements, useTx, m.Version, direction, m.noVersioning); err != nil {
+		if err := runSQLMigration(ctx, db, statements, useTx, m.Version, direction, m.noVersioning); err != nil {
 			return errors.Wrapf(err, "ERROR %v: failed to run SQL migration", filepath.Base(m.Source))
 		}
 
@@ -78,7 +89,7 @@ func (m *Migration) run(db *sql.DB, direction bool) error {
 		if !m.Registered {
 			return errors.Errorf("ERROR %v: failed to run Go migration: Go functions must be registered and built into a custom binary (see https://github.com/pressly/goose/tree/master/examples/go-migrations)", m.Source)
 		}
-		tx, err := db.Begin()
+		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return errors.Wrap(err, "ERROR failed to begin transaction")
 		}
@@ -90,7 +101,7 @@ func (m *Migration) run(db *sql.DB, direction bool) error {
 
 		if fn != nil {
 			// Run Go migration function.
-			if err := fn(tx); err != nil {
+			if err := fn(ctx, tx); err != nil {
 				tx.Rollback()
 				return errors.Wrapf(err, "ERROR %v: failed to run Go migration function %T", filepath.Base(m.Source), fn)
 			}

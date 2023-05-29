@@ -1,6 +1,7 @@
 package goose
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -36,6 +37,11 @@ func withApplyUpByOne() OptionsFunc {
 
 // UpTo migrates up to a specific version.
 func UpTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
+	return UpToCtx(context.Background(), db, dir, version, opts...)
+}
+
+// UpToCtx migrates up to a specific version.
+func UpToCtx(ctx context.Context, db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 	option := &options{}
 	for _, f := range opts {
 		f(option)
@@ -54,13 +60,13 @@ func UpTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 			// migration over and over.
 			version = foundMigrations[0].Version
 		}
-		return upToNoVersioning(db, foundMigrations, version)
+		return upToNoVersioning(ctx, db, foundMigrations, version)
 	}
 
-	if _, err := EnsureDBVersion(db); err != nil {
+	if _, err := EnsureDBVersionCtx(ctx, db); err != nil {
 		return err
 	}
-	dbMigrations, err := listAllDBVersions(db)
+	dbMigrations, err := listAllDBVersions(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -82,6 +88,7 @@ func UpTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 
 	if option.allowMissing {
 		return upWithMissing(
+			ctx,
 			db,
 			missingMigrations,
 			foundMigrations,
@@ -93,7 +100,7 @@ func UpTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 	var current int64
 	for {
 		var err error
-		current, err = GetDBVersion(db)
+		current, err = GetDBVersionCtx(ctx, db)
 		if err != nil {
 			return err
 		}
@@ -104,7 +111,7 @@ func UpTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 			}
 			return fmt.Errorf("failed to find next migration: %v", err)
 		}
-		if err := next.Up(db); err != nil {
+		if err := next.UpCtx(ctx, db); err != nil {
 			return err
 		}
 		if option.applyUpByOne {
@@ -124,14 +131,14 @@ func UpTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 
 // upToNoVersioning applies up migrations up to, and including, the
 // target version.
-func upToNoVersioning(db *sql.DB, migrations Migrations, version int64) error {
+func upToNoVersioning(ctx context.Context, db *sql.DB, migrations Migrations, version int64) error {
 	var finalVersion int64
 	for _, current := range migrations {
 		if current.Version > version {
 			break
 		}
 		current.noVersioning = true
-		if err := current.Up(db); err != nil {
+		if err := current.UpCtx(ctx, db); err != nil {
 			return err
 		}
 		finalVersion = current.Version
@@ -141,6 +148,7 @@ func upToNoVersioning(db *sql.DB, migrations Migrations, version int64) error {
 }
 
 func upWithMissing(
+	ctx context.Context,
 	db *sql.DB,
 	missingMigrations Migrations,
 	foundMigrations Migrations,
@@ -154,7 +162,7 @@ func upWithMissing(
 
 	// Apply all missing migrations first.
 	for _, missing := range missingMigrations {
-		if err := missing.Up(db); err != nil {
+		if err := missing.UpCtx(ctx, db); err != nil {
 			return err
 		}
 		// Apply one migration and return early.
@@ -176,14 +184,14 @@ func upWithMissing(
 		if lookupApplied[found.Version] {
 			continue
 		}
-		if err := found.Up(db); err != nil {
+		if err := found.UpCtx(ctx, db); err != nil {
 			return err
 		}
 		if option.applyUpByOne {
 			return nil
 		}
 	}
-	current, err := GetDBVersion(db)
+	current, err := GetDBVersionCtx(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -200,21 +208,31 @@ func upWithMissing(
 
 // Up applies all available migrations.
 func Up(db *sql.DB, dir string, opts ...OptionsFunc) error {
-	return UpTo(db, dir, maxVersion, opts...)
+	return UpCtx(context.Background(), db, dir, opts...)
 }
 
 // UpByOne migrates up by a single version.
 func UpByOne(db *sql.DB, dir string, opts ...OptionsFunc) error {
+	return UpByOneCtx(context.Background(), db, dir, opts...)
+}
+
+// UpCtx applies all available migrations.
+func UpCtx(ctx context.Context, db *sql.DB, dir string, opts ...OptionsFunc) error {
+	return UpToCtx(ctx, db, dir, maxVersion, opts...)
+}
+
+// UpByOneCtx migrates up by a single version.
+func UpByOneCtx(ctx context.Context, db *sql.DB, dir string, opts ...OptionsFunc) error {
 	opts = append(opts, withApplyUpByOne())
-	return UpTo(db, dir, maxVersion, opts...)
+	return UpToCtx(ctx, db, dir, maxVersion, opts...)
 }
 
 // listAllDBVersions returns a list of all migrations, ordered ascending.
 // TODO(mf): fairly cheap, but a nice-to-have is pagination support.
-func listAllDBVersions(db *sql.DB) (Migrations, error) {
+func listAllDBVersions(ctx context.Context, db *sql.DB) (Migrations, error) {
 	rows, err := GetDialect().dbVersionQuery(db)
 	if err != nil {
-		return nil, createVersionTable(db)
+		return nil, createVersionTable(ctx, db)
 	}
 	var all Migrations
 	for rows.Next() {

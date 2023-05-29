@@ -1,12 +1,18 @@
 package goose
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 )
 
 // Down rolls back a single migration from the current version.
 func Down(db *sql.DB, dir string, opts ...OptionsFunc) error {
+	return DownCtx(context.Background(), db, dir, opts...)
+}
+
+// DownCtx rolls back a single migration from the current version.
+func DownCtx(ctx context.Context, db *sql.DB, dir string, opts ...OptionsFunc) error {
 	option := &options{}
 	for _, f := range opts {
 		f(option)
@@ -21,9 +27,9 @@ func Down(db *sql.DB, dir string, opts ...OptionsFunc) error {
 		}
 		currentVersion := migrations[len(migrations)-1].Version
 		// Migrate only the latest migration down.
-		return downToNoVersioning(db, migrations, currentVersion-1)
+		return downToNoVersioning(ctx, db, migrations, currentVersion-1)
 	}
-	currentVersion, err := GetDBVersion(db)
+	currentVersion, err := GetDBVersionCtx(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -31,11 +37,16 @@ func Down(db *sql.DB, dir string, opts ...OptionsFunc) error {
 	if err != nil {
 		return fmt.Errorf("no migration %v", currentVersion)
 	}
-	return current.Down(db)
+	return current.DownCtx(ctx, db)
 }
 
 // DownTo rolls back migrations to a specific version.
 func DownTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
+	return DownToCtx(context.Background(), db, dir, version, opts...)
+}
+
+// DownToCtx rolls back migrations to a specific version.
+func DownToCtx(ctx context.Context, db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 	option := &options{}
 	for _, f := range opts {
 		f(option)
@@ -45,11 +56,11 @@ func DownTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 		return err
 	}
 	if option.noVersioning {
-		return downToNoVersioning(db, migrations, version)
+		return downToNoVersioning(ctx, db, migrations, version)
 	}
 
 	for {
-		currentVersion, err := GetDBVersion(db)
+		currentVersion, err := GetDBVersionCtx(ctx, db)
 		if err != nil {
 			return err
 		}
@@ -65,7 +76,7 @@ func DownTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 			return nil
 		}
 
-		if err = current.Down(db); err != nil {
+		if err = current.DownCtx(ctx, db); err != nil {
 			return err
 		}
 	}
@@ -73,7 +84,7 @@ func DownTo(db *sql.DB, dir string, version int64, opts ...OptionsFunc) error {
 
 // downToNoVersioning applies down migrations down to, but not including, the
 // target version.
-func downToNoVersioning(db *sql.DB, migrations Migrations, version int64) error {
+func downToNoVersioning(ctx context.Context, db *sql.DB, migrations Migrations, version int64) error {
 	var finalVersion int64
 	for i := len(migrations) - 1; i >= 0; i-- {
 		if version >= migrations[i].Version {
@@ -81,7 +92,7 @@ func downToNoVersioning(db *sql.DB, migrations Migrations, version int64) error 
 			break
 		}
 		migrations[i].noVersioning = true
-		if err := migrations[i].Down(db); err != nil {
+		if err := migrations[i].DownCtx(ctx, db); err != nil {
 			return err
 		}
 	}

@@ -1,6 +1,7 @@
 package goose
 
 import (
+	"context"
 	"database/sql"
 	"sort"
 
@@ -9,6 +10,11 @@ import (
 
 // Reset rolls back all migrations
 func Reset(db *sql.DB, dir string, opts ...OptionsFunc) error {
+	return ResetCtx(context.Background(), db, dir, opts...)
+}
+
+// ResetCtx rolls back all migrations
+func ResetCtx(ctx context.Context, db *sql.DB, dir string, opts ...OptionsFunc) error {
 	option := &options{}
 	for _, f := range opts {
 		f(option)
@@ -21,7 +27,7 @@ func Reset(db *sql.DB, dir string, opts ...OptionsFunc) error {
 		return DownTo(db, dir, minVersion, opts...)
 	}
 
-	statuses, err := dbMigrationsStatus(db)
+	statuses, err := dbMigrationsStatus(ctx, db)
 	if err != nil {
 		return errors.Wrap(err, "failed to get status of migrations")
 	}
@@ -31,7 +37,7 @@ func Reset(db *sql.DB, dir string, opts ...OptionsFunc) error {
 		if !statuses[migration.Version] {
 			continue
 		}
-		if err = migration.Down(db); err != nil {
+		if err = migration.DownCtx(ctx, db); err != nil {
 			return errors.Wrap(err, "failed to db-down")
 		}
 	}
@@ -39,7 +45,7 @@ func Reset(db *sql.DB, dir string, opts ...OptionsFunc) error {
 	return nil
 }
 
-func dbMigrationsStatus(db *sql.DB) (map[int64]bool, error) {
+func dbMigrationsStatus(_ context.Context, db *sql.DB) (map[int64]bool, error) {
 	rows, err := GetDialect().dbVersionQuery(db)
 	if err != nil {
 		return map[int64]bool{}, nil
